@@ -56,6 +56,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Thêm khu vực hiển thị chỉ số không khí ở phía dưới bản đồ -->
+    <div class="flex bg-white text-slate-800 p-4 shadow-inner">
+      <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
+        <div class="text-3xl font-bold text-blue-600">{{currentCity}}</div>
+        <div class="text-sm text-slate-500">Thành phố</div>
+      </div>
+      <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
+        <div class="text-4xl font-bold" :class="getAQIColor(currentAQI)">{{currentAQI}}</div>
+        <div class="text-sm text-slate-500">AQI</div>
+      </div>
+      <div class="flex-1 flex flex-col items-center justify-center">
+        <div class="text-xl font-medium" :class="getAQIColor(currentAQI)">{{getAQIDescription(currentAQI)}}</div>
+        <div class="text-sm text-slate-500">Tình trạng</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -66,9 +82,31 @@ import 'leaflet/dist/leaflet.css'
 import geoData from '@/assets/gis_quan_HN_HCM.json'
 
 const legendExpanded = ref(false)
+const currentCity = ref('Hà Nội')
+const currentAQI = ref(132)
 
 function toggleLegend() {
   legendExpanded.value = !legendExpanded.value
+}
+
+// Lấy màu dựa trên chỉ số AQI cho phần hiển thị ở dưới
+function getAQIColor(aqi) {
+  if (aqi <= 50) return 'text-green-500'
+  if (aqi <= 100) return 'text-yellow-500'
+  if (aqi <= 150) return 'text-orange-500'
+  if (aqi <= 200) return 'text-red-500'
+  if (aqi > 200) return 'text-purple-600'
+  return 'text-gray-400'
+}
+
+// Lấy mô tả tình trạng dựa trên chỉ số AQI
+function getAQIDescription(aqi) {
+  if (aqi <= 50) return 'Tốt'
+  if (aqi <= 100) return 'Trung bình'
+  if (aqi <= 150) return 'Kém'
+  if (aqi <= 200) return 'Xấu'
+  if (aqi > 200) return 'Nguy hại'
+  return 'Không có dữ liệu'
 }
 
 const dummyData = {
@@ -180,7 +218,7 @@ onMounted(() => {
 
         layer.bindTooltip(tooltip)
 
-        // Show/hide tooltip on hover
+        // Show/hide tooltip on hover and update city info
         layer.on({
           mouseover: () => {
             layer.setStyle({
@@ -190,16 +228,32 @@ onMounted(() => {
             })
             layer.bringToFront()
             layer.openTooltip()
+
+            // Cập nhật thông tin thành phố khi hover
+            if (data) {
+              currentCity.value = name
+              currentAQI.value = data.AQI
+            }
           },
           mouseout: () => {
             geoLayer.resetStyle(layer)
             layer.closeTooltip()
+
+            // Trở lại thông tin mặc định khi không hover
+            currentCity.value = 'Hà Nội'
+            currentAQI.value = 132
           },
           click: () => {
             map.fitBounds(layer.getBounds(), {
               padding: [50, 50],
               maxZoom: 12
             })
+
+            // Cập nhật thông tin thành phố khi click
+            if (data) {
+              currentCity.value = name
+              currentAQI.value = data.AQI
+            }
           }
         })
       },
@@ -228,7 +282,7 @@ onMounted(() => {
 .map-container {
   background-color: #0f172a;
   /* slate-900 */
-  min-height: 400px;
+  min-height: 380px; /* giảm một chút chiều cao để chừa chỗ cho phần thông tin ở dưới */
 }
 
 /* Animation for legend toggle */

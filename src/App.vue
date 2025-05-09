@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-screen bg-cyan-900 p-4 gap-4">
+  <div class="flex h-screen bg-gray-100 p-4 gap-4">
     <ChatView class="w-1/3 rounded-lg overflow-hidden shadow-2xl" />
     <MapView class="flex-1 rounded-lg overflow-hidden shadow-2xl" />
   </div>
@@ -15,8 +15,7 @@ body {
   margin: 0;
   padding: 0;
   font-family: 'Inter', sans-serif;
-  background-color: #164e63;
-  /* cyan-900 */
+  background-color: #f3f4f6; /* gray-100 */
 }
 
 ::-webkit-scrollbar {
@@ -24,16 +23,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0c4a6e;
+  background: #e5e7eb; /* gray-200 */
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #38bdf8;
+  background: #60a5fa; /* blue-400 */
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #0ea5e9;
+  background: #3b82f6; /* blue-500 */
 }
 </style>
