@@ -17,7 +17,7 @@
             ? 'bg-gradient-to-r from-blue-400 to-cyan-400 text-white'
             : 'bg-gray-200 text-gray-800'
         ]">
-          {{ msg.text }}
+          <div v-html="msg.text"></div>
           <div v-if="msg.timestamp" class="text-xs mt-1 opacity-70"
             :class="msg.sender === 'user' ? 'text-white' : 'text-gray-600'">
             {{ formatTimestamp(msg.timestamp) }}
@@ -29,6 +29,7 @@
     <!-- Input -->
     <div class="flex items-end p-4 bg-gray-100 space-x-2 border-t border-gray-300">
       <textarea v-model="newMessage" placeholder="Nhập tin nhắn..." rows="1" @input="autoResize"
+        @keydown.enter.prevent="sendMessage"
         class="flex-1 border border-gray-300 bg-white text-gray-800 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none overflow-hidden transition-all duration-200"></textarea>
 
       <button @click="recordVoice"
@@ -44,7 +45,11 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
+import { useMapStore } from '@/stores/mapStore'
+
+// Initialize the map store
+const mapStore = useMapStore()
 
 const messages = ref([
   { sender: 'bot', text: 'Xin chào! Tôi là Trợ lý Ô nhiễm.', timestamp: new Date() },
@@ -52,24 +57,73 @@ const messages = ref([
   { sender: 'bot', text: 'Bạn vui lòng nhập khu vực bạn muốn kiểm tra?', timestamp: new Date() },
   { sender: 'user', text: 'Tp. Hồ Chí Minh, Quận 1.', timestamp: new Date() },
   { sender: 'bot', text: 'AQI hiện tại: 125 (Không tốt cho người nhạy cảm).', timestamp: new Date() },
-  { sender: 'user', text: 'Cảm ơn bạn!', timestamp: new Date() },
-  { sender: 'bot', text: 'Bạn có cần thêm thông tin gì không?', timestamp: new Date() },
-  { sender: 'user', text: 'Không, cảm ơn!', timestamp: new Date() },
-  { sender: 'bot', text: 'Chúc bạn một ngày tốt lành!', timestamp: new Date() }
 ])
 
 const newMessage = ref('')
 const chatContainer = ref(null)
 const isRecording = ref(false)
 
-function sendMessage() {
+// Send message and update map data
+async function sendMessage() {
   if (newMessage.value.trim() !== '') {
+    // Add user message to chat
     messages.value.push({ sender: 'user', text: newMessage.value, timestamp: new Date() })
-    setTimeout(() => {
-      messages.value.push({ sender: 'bot', text: 'Bot đã nhận tin nhắn: ' + newMessage.value, timestamp: new Date() })
-    }, 800)
+
+    // Store message to send to API
+    const userInput = newMessage.value
+
+    // Clear input field
     newMessage.value = ''
     autoResize()
+
+    try {
+      // Call API with user message
+      const response = await fetch('http://127.0.0.1:8000/send-to-webhook', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_input: userInput
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok')
+      }
+
+      const data = await response.json()
+      console.log('API response:', data)
+
+      // Add bot response to chat
+      messages.value.push({
+        sender: 'bot',
+        text: data.reply,
+        timestamp: new Date()
+      })
+
+      // Update map store if map data is provided
+      if (data.map && data.map !== 'none') {
+        // Cập nhật mapStore hoặc updateMapData như bình thường
+        mapStore.city = data.map
+        mapStore.locations = data.location || []
+        mapStore.AQI = data.AQI || []
+        mapStore.CO = data.CO || []
+        mapStore.SO2 = data.SO2 || []
+        mapStore.PM25 = data.PM25 || []
+
+        // Log to confirm data was updated in store
+        console.log('Map data updated in store:', mapStore.city)
+      }
+    } catch (error) {
+      console.error('Lỗi:', error)
+      messages.value.push({
+        sender: 'bot',
+        text: 'Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn.',
+        timestamp: new Date()
+      })
+    }
   }
 }
 
@@ -108,7 +162,11 @@ watch(messages, () => {
 }, { deep: true })
 
 // Scroll to bottom on initial load
-scrollToBottom()
+onMounted(() => {
+  scrollToBottom()
+})
 </script>
 
-<style scoped></style>
+<style scoped>
+/* Custom styles */
+</style>

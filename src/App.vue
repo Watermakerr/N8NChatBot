@@ -15,7 +15,8 @@ body {
   margin: 0;
   padding: 0;
   font-family: 'Inter', sans-serif;
-  background-color: #f3f4f6; /* gray-100 */
+  background-color: #f3f4f6;
+  /* gray-100 */
 }
 
 ::-webkit-scrollbar {
@@ -23,16 +24,19 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #e5e7eb; /* gray-200 */
+  background: #e5e7eb;
+  /* gray-200 */
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #60a5fa; /* blue-400 */
+  background: #60a5fa;
+  /* blue-400 */
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3b82f6; /* blue-500 */
+  background: #3b82f6;
+  /* blue-500 */
 }
-</style>
+</style>z

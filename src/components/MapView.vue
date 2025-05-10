@@ -60,15 +60,15 @@
     <!-- Thêm khu vực hiển thị chỉ số không khí ở phía dưới bản đồ -->
     <div class="flex bg-white text-slate-800 p-4 shadow-inner">
       <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
-        <div class="text-3xl font-bold text-blue-600">{{currentCity}}</div>
+        <div class="text-3xl font-bold text-blue-600">{{ currentCity }}</div>
         <div class="text-sm text-slate-500">Thành phố</div>
       </div>
       <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
-        <div class="text-4xl font-bold" :class="getAQIColor(currentAQI)">{{currentAQI}}</div>
+        <div class="text-4xl font-bold" :class="getAQIColor(currentAQI)">{{ currentAQI }}</div>
         <div class="text-sm text-slate-500">AQI</div>
       </div>
       <div class="flex-1 flex flex-col items-center justify-center">
-        <div class="text-xl font-medium" :class="getAQIColor(currentAQI)">{{getAQIDescription(currentAQI)}}</div>
+        <div class="text-xl font-medium" :class="getAQIColor(currentAQI)">{{ getAQIDescription(currentAQI) }}</div>
         <div class="text-sm text-slate-500">Tình trạng</div>
       </div>
     </div>
@@ -76,14 +76,39 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useMapStore } from '@/stores/mapStore'
+import { watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import geoData from '@/assets/gis_quan_HN_HCM.json'
 
+// Initialize the map store
+const mapStore = useMapStore()
+
 const legendExpanded = ref(false)
 const currentCity = ref('Hà Nội')
 const currentAQI = ref(132)
+const map = ref(null)
+const geoLayer = ref(null)
+
+// Computed property to access location data from the store
+const locationData = computed(() => {
+  if (!mapStore.hasData) return {}
+
+  // Create a map object with location names as keys
+  const dataMap = {}
+  mapStore.locations.forEach((location, index) => {
+    dataMap[location] = {
+      AQI: mapStore.AQI[index],
+      CO: mapStore.CO[index],
+      SO2: mapStore.SO2[index],
+      PM25: mapStore.PM25[index]
+    }
+  })
+
+  return dataMap
+})
 
 function toggleLegend() {
   legendExpanded.value = !legendExpanded.value
@@ -109,21 +134,14 @@ function getAQIDescription(aqi) {
   return 'Không có dữ liệu'
 }
 
-const dummyData = {
-  "Ba Đình": { AQI: 45, CO: 0.5, SO2: 10, PM25: 15 },
-  "Ba Vì": { AQI: 88, CO: 0.8, SO2: 15, PM25: 25 },
-  "Cầu Giấy": { AQI: 123, CO: 1.2, SO2: 20, PM25: 35 },
-  "Hoàn Kiếm": { AQI: 175, CO: 2.0, SO2: 30, PM25: 50 },
-  "Long Biên": { AQI: 210, CO: 2.5, SO2: 40, PM25: 60 }
-}
-
 function getColor(aqi) {
+  if (aqi === undefined || aqi === null) return '#9ca3af' // gray-400 cho không có dữ liệu
   if (aqi <= 50) return '#10b981' // green-500
   if (aqi <= 100) return '#facc15' // yellow-400
   if (aqi <= 150) return '#f97316' // orange-500
   if (aqi <= 200) return '#ef4444' // red-500
   if (aqi > 200) return '#9333ea' // purple-600
-  return '#9ca3af' // gray-400
+  return '#9ca3af' // fallback gray-400
 }
 
 // Function to calculate the centroid of a polygon or multipolygon
@@ -145,29 +163,137 @@ function getCentroid(feature) {
   return [latSum / count, lngSum / count]
 }
 
+// Function to update the map with new data
+function updateMap() {
+  if (!map.value || !geoLayer.value) return
+
+  // Get the current city from store
+  const city = mapStore.city
+
+  // Update current city display
+  currentCity.value = city || 'Hà Nội'
+
+  // If there's a most polluted location, show its AQI
+  if (mapStore.mostPollutedLocation) {
+    currentAQI.value = mapStore.mostPollutedLocation.AQI
+  }
+
+  // Filter GeoJSON based on selected city
+  let cityFeatures = []
+  if (city === 'Hà Nội') {
+    cityFeatures = geoData.features.filter(feature =>
+      feature.properties.NAME_1 === 'Hà Nội')
+  } else if (city === 'Hồ Chí Minh') {
+    cityFeatures = geoData.features.filter(feature =>
+      feature.properties.NAME_1 === 'Hồ Chí Minh')
+  } else {
+    // Default to Hà Nội if no city is specified
+    cityFeatures = geoData.features.filter(feature =>
+      feature.properties.NAME_1 === 'Hà Nội')
+  }
+
+  // Update the GeoJSON layer with filtered data
+  geoLayer.value.clearLayers()
+
+  const filteredGeoData = {
+    ...geoData,
+    features: cityFeatures
+  }
+
+  geoLayer.value.addData(filteredGeoData)
+
+  // Fit map to the city's bounds
+  const bounds = geoLayer.value.getBounds()
+  map.value.fitBounds(bounds, {
+    padding: [50, 50],
+    maxZoom: 11
+  })
+}
+
+// Watch for changes in the map store
+watch(() => mapStore.city, (newCity) => {
+  if (newCity) {
+    console.log('Updating map for city:', newCity)
+    updateMap()
+  }
+})
+
+// Watch locationData để cập nhật màu khi dữ liệu đổi
+watch(locationData, () => {
+  if (geoLayer.value) {
+    geoLayer.value.setStyle(feature => {
+      const name = feature.properties.NAME_2
+      const data = locationData.value[name]
+      const aqi = data?.AQI
+      return {
+        fillColor: getColor(aqi),
+        weight: 1.5,
+        color: '#1e293b',
+        fillOpacity: 0.8
+      }
+    })
+
+    // Cập nhật lại tooltip cho từng layer
+    geoLayer.value.eachLayer(layer => {
+      const feature = layer.feature
+      const name = feature.properties.NAME_2
+      const data = locationData.value[name]
+      const centroid = getCentroid(feature)
+      const tooltipContent = data
+        ? `<div style="font-family: 'Inter', sans-serif;">
+             <div style="font-weight: bold; font-size: 16px; text-align: center; margin-bottom: 5px; color: #22d3ee;">${name}</div>
+             <div style="padding: 5px; background: rgba(15, 23, 42, 0.7); border-radius: 4px;">
+               <div>AQI: <span style="font-weight: bold; color: ${getColor(data.AQI)};">${data.AQI}</span></div>
+               <div>CO: ${data.CO} ppm</div>
+               <div>SO₂: ${data.SO2} µg/m³</div>
+               <div>PM2.5: ${data.PM25} µg/m³</div>
+             </div>
+           </div>`
+        : `<div style="font-family: 'Inter', sans-serif;">
+             <div style="font-weight: bold; font-size: 16px; text-align: center; color: #22d3ee;">${name}</div>
+             <div style="padding: 5px;">Không có dữ liệu</div>
+           </div>`
+
+      // Xóa tooltip cũ và gán tooltip mới
+      layer.unbindTooltip()
+      const tooltip = L.tooltip({
+        permanent: false,
+        direction: 'top',
+        offset: [0, -20],
+        opacity: 0.95,
+        className: 'custom-tooltip'
+      })
+        .setContent(tooltipContent)
+        .setLatLng(centroid)
+      layer.bindTooltip(tooltip)
+    })
+  }
+}, { deep: true })
+
 onMounted(() => {
   // Need to wait a bit for the DOM to be fully rendered
   setTimeout(() => {
-    const map = L.map('map', {
+    // Initialize the map
+    map.value = L.map('map', {
       zoomControl: false,
       attributionControl: false
     }).setView([21.0285, 105.8542], 11)
 
     // Set minimum zoom level to prevent zooming out too far
-    map.setMinZoom(10)
+    map.value.setMinZoom(10)
 
     // Use a dark theme tile layer
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap & CartoDB',
       subdomains: 'abcd',
       maxZoom: 19
-    }).addTo(map);
+    }).addTo(map.value);
 
     // Create a shadow pane for highlight effect
-    map.createPane('shadowPane')
-    map.getPane('shadowPane').style.zIndex = 450
+    map.value.createPane('shadowPane')
+    map.value.getPane('shadowPane').style.zIndex = 450
 
-    // Filter GeoJSON to include only Hà Nội districts
+    // Filter GeoJSON to include only Hà Nội districts initially
     const hanoiFeatures = geoData.features.filter(feature => feature.properties.NAME_1 === 'Hà Nội')
     const filteredGeoData = {
       ...geoData,
@@ -175,10 +301,11 @@ onMounted(() => {
     }
 
     // Create GeoJSON layer
-    const geoLayer = L.geoJSON(filteredGeoData, {
+    geoLayer.value = L.geoJSON(filteredGeoData, {
       style: feature => {
         const name = feature.properties.NAME_2
-        const aqi = dummyData[name]?.AQI || null
+        const data = locationData.value[name]
+        const aqi = data?.AQI || null
         return {
           fillColor: getColor(aqi),
           weight: 1.5,
@@ -188,7 +315,7 @@ onMounted(() => {
       },
       onEachFeature: (feature, layer) => {
         const name = feature.properties.NAME_2
-        const data = dummyData[name]
+        const data = locationData.value[name]
         const centroid = getCentroid(feature)
         const tooltipContent = data
           ? `<div style="font-family: 'Inter', sans-serif;">
@@ -229,27 +356,31 @@ onMounted(() => {
             layer.bringToFront()
             layer.openTooltip()
 
-            // Cập nhật thông tin thành phố khi hover
+            // Update current location info when hovering
             if (data) {
               currentCity.value = name
               currentAQI.value = data.AQI
             }
           },
           mouseout: () => {
-            geoLayer.resetStyle(layer)
+            geoLayer.value.resetStyle(layer)
             layer.closeTooltip()
 
-            // Trở lại thông tin mặc định khi không hover
-            currentCity.value = 'Hà Nội'
-            currentAQI.value = 132
+            // Reset to default info when not hovering
+            currentCity.value = mapStore.city || 'Hà Nội'
+            if (mapStore.mostPollutedLocation) {
+              currentAQI.value = mapStore.mostPollutedLocation.AQI
+            } else {
+              currentAQI.value = 132 // Default value
+            }
           },
           click: () => {
-            map.fitBounds(layer.getBounds(), {
+            map.value.fitBounds(layer.getBounds(), {
               padding: [50, 50],
               maxZoom: 12
             })
 
-            // Cập nhật thông tin thành phố khi click
+            // Update current location info when clicking
             if (data) {
               currentCity.value = name
               currentAQI.value = data.AQI
@@ -258,17 +389,17 @@ onMounted(() => {
         })
       },
       pane: 'shadowPane'
-    }).addTo(map)
+    }).addTo(map.value)
 
     // Fit map to Hà Nội districts' bounds
-    const bounds = geoLayer.getBounds()
-    map.fitBounds(bounds, {
+    const bounds = geoLayer.value.getBounds()
+    map.value.fitBounds(bounds, {
       padding: [50, 50],
       maxZoom: 11
     })
 
     // Force map to update its size
-    map.invalidateSize()
+    map.value.invalidateSize()
   }, 100)
 })
 </script>
@@ -282,7 +413,8 @@ onMounted(() => {
 .map-container {
   background-color: #0f172a;
   /* slate-900 */
-  min-height: 380px; /* giảm một chút chiều cao để chừa chỗ cho phần thông tin ở dưới */
+  min-height: 380px;
+  /* giảm một chút chiều cao để chừa chỗ cho phần thông tin ở dưới */
 }
 
 /* Animation for legend toggle */
