@@ -6,7 +6,7 @@
 </template>
 
 <script setup>
-import ChatView from './components/ChatView.vue'
+import ChatView from './components/ChatVIew.vue'
 import MapView from './components/MapView.vue'
 </script>
 

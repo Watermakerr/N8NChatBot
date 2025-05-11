@@ -28,9 +28,9 @@
 
     <!-- Input -->
     <div class="flex items-end p-4 bg-gray-100 space-x-2 border-t border-gray-300">
-      <textarea v-model="newMessage" placeholder="Nhập tin nhắn..." rows="1" @input="autoResize"
-        @keydown.enter.prevent="sendMessage"
-        class="flex-1 border border-gray-300 bg-white text-gray-800 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none overflow-hidden transition-all duration-200"></textarea>
+      <textarea v-model="newMessage" placeholder="Nhập tin nhắn..." rows="1" @keydown.enter.prevent="sendMessage"
+        class="flex-1 border border-gray-300 bg-white text-gray-800 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none overflow-hidden transition-all duration-200">
+      </textarea>
 
       <button @click="recordVoice"
         class="bg-gray-200 text-cyan-600 px-3 py-2 border border-gray-300 hover:bg-gray-300 rounded-full h-12 transition-colors duration-200">
@@ -74,7 +74,6 @@ async function sendMessage() {
 
     // Clear input field
     newMessage.value = ''
-    autoResize()
 
     try {
       // Call API with user message
@@ -137,11 +136,6 @@ function recordVoice() {
   }
 }
 
-function autoResize(event) {
-  const textarea = event ? event.target : document.querySelector('textarea')
-  textarea.style.height = 'auto'
-  textarea.style.height = `${textarea.scrollHeight}px`
-}
 
 function formatTimestamp(timestamp) {
   return new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })

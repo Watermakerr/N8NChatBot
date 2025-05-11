@@ -1,10 +1,5 @@
 <template>
   <div class="map-wrapper bg-slate-800 rounded-lg overflow-hidden flex flex-col h-full">
-    <div
-      class="p-4 font-bold text-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md flex items-center">
-      <div class="text-cyan-300 mr-3 text-2xl">🗺️</div>
-      <div>Bản đồ Ô nhiễm</div>
-    </div>
 
     <div class="relative flex-grow">
       <div id="map" class="map-container w-full h-full z-0"></div>
@@ -61,7 +56,6 @@
     <div class="flex bg-white text-slate-800 p-4 shadow-inner">
       <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
         <div class="text-3xl font-bold text-blue-600">{{ currentCity }}</div>
-        <div class="text-sm text-slate-500">Thành phố</div>
       </div>
       <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
         <div class="text-4xl font-bold" :class="getAQIColor(currentAQI)">{{ currentAQI }}</div>
@@ -82,6 +76,7 @@ import { watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import geoData from '@/assets/gis_quan_HN_HCM.json'
+import vnBoundary from '@/assets/gadm41_VNM_1.json'
 
 // Initialize the map store
 const mapStore = useMapStore()
@@ -91,13 +86,21 @@ const currentCity = ref('Hà Nội')
 const currentAQI = ref(132)
 const map = ref(null)
 const geoLayer = ref(null)
+const vnLayer = ref(null) // Add a separate layer for Vietnam boundaries
 
 // Computed property to access location data from the store
 const locationData = computed(() => {
-  if (!mapStore.hasData) return {}
+  if (!mapStore.hasData) {
+    console.log('No data in mapStore')
+    return {}
+  }
 
   // Create a map object with location names as keys
   const dataMap = {}
+
+  // Log available locations for debugging
+  console.log('Available mapStore locations:', mapStore.locations)
+
   mapStore.locations.forEach((location, index) => {
     dataMap[location] = {
       AQI: mapStore.AQI[index],
@@ -165,151 +168,202 @@ function getCentroid(feature) {
 
 // Function to update the map with new data
 function updateMap() {
-  if (!map.value || !geoLayer.value) return
+  if (!map.value) return
 
-  // Get the current city from store
   const city = mapStore.city
+  currentCity.value = city === 'all' ? 'Việt Nam' : (city || 'Hà Nội')
 
-  // Update current city display
-  currentCity.value = city || 'Hà Nội'
-
-  // If there's a most polluted location, show its AQI
   if (mapStore.mostPollutedLocation) {
     currentAQI.value = mapStore.mostPollutedLocation.AQI
   }
 
-  // Filter GeoJSON based on selected city
-  let cityFeatures = []
-  if (city === 'Hà Nội') {
-    cityFeatures = geoData.features.filter(feature =>
-      feature.properties.NAME_1 === 'Hà Nội')
-  } else if (city === 'Hồ Chí Minh') {
-    cityFeatures = geoData.features.filter(feature =>
-      feature.properties.NAME_1 === 'Hồ Chí Minh')
-  } else {
-    // Default to Hà Nội if no city is specified
-    cityFeatures = geoData.features.filter(feature =>
-      feature.properties.NAME_1 === 'Hà Nội')
-  }
-
-  // Update the GeoJSON layer with filtered data
-  geoLayer.value.clearLayers()
-
-  const filteredGeoData = {
-    ...geoData,
-    features: cityFeatures
-  }
-
-  geoLayer.value.addData(filteredGeoData)
-
-  // Fit map to the city's bounds
-  const bounds = geoLayer.value.getBounds()
-  map.value.fitBounds(bounds, {
-    padding: [50, 50],
-    maxZoom: 11
-  })
-}
-
-// Watch for changes in the map store
-watch(() => mapStore.city, (newCity) => {
-  if (newCity) {
-    console.log('Updating map for city:', newCity)
-    updateMap()
-  }
-})
-
-// Watch locationData để cập nhật màu khi dữ liệu đổi
-watch(locationData, () => {
+  // Clear existing layers
   if (geoLayer.value) {
-    geoLayer.value.setStyle(feature => {
-      const name = feature.properties.NAME_2
-      const data = locationData.value[name]
-      const aqi = data?.AQI
-      return {
-        fillColor: getColor(aqi),
-        weight: 1.5,
-        color: '#1e293b',
-        fillOpacity: 0.8
-      }
-    })
-
-    // Cập nhật lại tooltip cho từng layer
-    geoLayer.value.eachLayer(layer => {
-      const feature = layer.feature
-      const name = feature.properties.NAME_2
-      const data = locationData.value[name]
-      const centroid = getCentroid(feature)
-      const tooltipContent = data
-        ? `<div style="font-family: 'Inter', sans-serif;">
-             <div style="font-weight: bold; font-size: 16px; text-align: center; margin-bottom: 5px; color: #22d3ee;">${name}</div>
-             <div style="padding: 5px; background: rgba(15, 23, 42, 0.7); border-radius: 4px;">
-               <div>AQI: <span style="font-weight: bold; color: ${getColor(data.AQI)};">${data.AQI}</span></div>
-               <div>CO: ${data.CO} ppm</div>
-               <div>SO₂: ${data.SO2} µg/m³</div>
-               <div>PM2.5: ${data.PM25} µg/m³</div>
-             </div>
-           </div>`
-        : `<div style="font-family: 'Inter', sans-serif;">
-             <div style="font-weight: bold; font-size: 16px; text-align: center; color: #22d3ee;">${name}</div>
-             <div style="padding: 5px;">Không có dữ liệu</div>
-           </div>`
-
-      // Xóa tooltip cũ và gán tooltip mới
-      layer.unbindTooltip()
-      const tooltip = L.tooltip({
-        permanent: false,
-        direction: 'top',
-        offset: [0, -20],
-        opacity: 0.95,
-        className: 'custom-tooltip'
-      })
-        .setContent(tooltipContent)
-        .setLatLng(centroid)
-      layer.bindTooltip(tooltip)
-    })
+    map.value.removeLayer(geoLayer.value)
+    geoLayer.value = null
   }
-}, { deep: true })
 
-onMounted(() => {
-  // Need to wait a bit for the DOM to be fully rendered
-  setTimeout(() => {
-    // Initialize the map
-    map.value = L.map('map', {
-      zoomControl: false,
-      attributionControl: false
-    }).setView([21.0285, 105.8542], 11)
+  if (vnLayer.value) {
+    map.value.removeLayer(vnLayer.value)
+    vnLayer.value = null
+  }
 
-    // Set minimum zoom level to prevent zooming out too far
+  let fitOptions = { padding: [50, 50], maxZoom: 11 }
+
+  if (city === 'all') {
+    // Handle nationwide view
+    console.log('Rendering nationwide map view')
+    map.value.setMinZoom(5)
+
+    try {
+      // Log the vnBoundary structure to debug
+      console.log('VN Boundary structure:',
+        vnBoundary ?
+          `Found - Features: ${vnBoundary.features?.length}` :
+          'Not found')
+
+      // Create GeoJSON layer for Vietnam provinces - ensure it's properly structured
+      if (vnBoundary && vnBoundary.features && vnBoundary.features.length > 0) {
+        vnLayer.value = L.geoJSON(vnBoundary, {
+          style: feature => {
+            // Log the first feature to debug property access
+            if (!window._loggedFeature) {
+              console.log('Sample feature:', feature)
+              window._loggedFeature = true
+            }
+
+            const name = feature.properties.NAME_1
+            const data = locationData.value[name]
+            const aqi = data?.AQI
+
+            return {
+              fillColor: getColor(aqi),
+              weight: 1.5,
+              color: '#1e293b',
+              fillOpacity: 0.8
+            }
+          },
+          onEachFeature: (feature, layer) => {
+            const name = feature.properties.NAME_1
+            const data = locationData.value[name]
+
+            try {
+              const centroid = getCentroid(feature)
+
+              const tooltipContent = data
+                ? `<div style="font-family: 'Inter', sans-serif;">
+                   <div style="font-weight: bold; font-size: 16px; text-align: center; margin-bottom: 5px; color: #22d3ee;">${name}</div>
+                   <div style="padding: 5px; background: rgba(15, 23, 42, 0.7); border-radius: 4px;">
+                     <div>AQI: <span style="font-weight: bold; color: ${getColor(data.AQI)};">${data.AQI}</span></div>
+                     <div>CO: ${data.CO} ppm</div>
+                     <div>SO₂: ${data.SO2} µg/m³</div>
+                     <div>PM2.5: ${data.PM25} µg/m³</div>
+                   </div>
+                 </div>`
+                : `<div style="font-family: 'Inter', sans-serif;">
+                   <div style="font-weight: bold; font-size: 16px; text-align: center; color: #22d3ee;">${name}</div>
+                   <div style="padding: 5px;">Không có dữ liệu</div>
+                 </div>`
+
+              const tooltip = L.tooltip({
+                permanent: false,
+                direction: 'top',
+                offset: [0, -20],
+                opacity: 0.95,
+                className: 'custom-tooltip'
+              })
+                .setContent(tooltipContent)
+                .setLatLng(centroid)
+
+              layer.bindTooltip(tooltip)
+
+              // Add hover effects
+              layer.on({
+                mouseover: () => {
+                  layer.setStyle({
+                    weight: 3,
+                    color: '#0ea5e9', // sky-500
+                    fillOpacity: 0.9
+                  })
+                  layer.bringToFront()
+                  layer.openTooltip()
+
+                  // Update current location info when hovering
+                  if (data) {
+                    currentCity.value = name
+                    currentAQI.value = data.AQI
+                  }
+                },
+                mouseout: () => {
+                  vnLayer.value?.resetStyle(layer)
+                  layer.closeTooltip()
+
+                  // Reset to default info when not hovering
+                  currentCity.value = 'Việt Nam'
+                  if (mapStore.mostPollutedLocation) {
+                    currentAQI.value = mapStore.mostPollutedLocation.AQI
+                  } else {
+                    currentAQI.value = 132 // Default value
+                  }
+                },
+                click: () => {
+                  map.value.fitBounds(layer.getBounds(), {
+                    padding: [50, 50],
+                    maxZoom: 8
+                  })
+
+                  // Update current location info when clicking
+                  if (data) {
+                    currentCity.value = name
+                    currentAQI.value = data.AQI
+                  }
+                }
+              })
+            } catch (e) {
+              console.error('Error processing feature:', e, feature)
+            }
+          },
+          pane: 'shadowPane'
+        }).addTo(map.value)
+
+        // Fit to Vietnam bounds if layer was created successfully
+        if (vnLayer.value && vnLayer.value.getBounds) {
+          try {
+            const bounds = vnLayer.value.getBounds()
+            if (bounds.isValid()) {
+              fitOptions = { padding: [20, 20], maxZoom: 6 }
+              map.value.fitBounds(bounds, fitOptions)
+            } else {
+              // Fallback to a default view of Vietnam if bounds are invalid
+              map.value.setView([16.0544, 107.9836], 5)
+            }
+          } catch (e) {
+            console.error('Error setting bounds:', e)
+            // Fallback to a default view of Vietnam
+            map.value.setView([16.0544, 107.9836], 5)
+          }
+        } else {
+          // Fallback if layer creation failed
+          console.warn('Fallback to default Vietnam view')
+          map.value.setView([16.0544, 107.9836], 5)
+        }
+      } else {
+        console.error('Vietnam boundary data is not properly structured')
+        // Set a default view for Vietnam
+        map.value.setView([16.0544, 107.9836], 5)
+      }
+    } catch (e) {
+      console.error('Error rendering nationwide map:', e)
+      // Fallback to a default view of Vietnam
+      map.value.setView([16.0544, 107.9836], 5)
+    }
+  } else {
+    // Handle city view (Hanoi or HCM)
     map.value.setMinZoom(10)
 
-    // Use a dark theme tile layer
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap & CartoDB',
-      subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map.value);
-
-    // Create a shadow pane for highlight effect
-    map.value.createPane('shadowPane')
-    map.value.getPane('shadowPane').style.zIndex = 450
-
-    // Filter GeoJSON to include only Hà Nội districts initially
-    const hanoiFeatures = geoData.features.filter(feature => feature.properties.NAME_1 === 'Hà Nội')
-    const filteredGeoData = {
-      ...geoData,
-      features: hanoiFeatures
+    let features = []
+    if (city === 'Hà Nội') {
+      features = geoData.features.filter(f => f.properties.NAME_1 === 'Hà Nội')
+    } else if (city === 'HCM' || city === 'Hồ Chí Minh') {
+      features = geoData.features.filter(f => f.properties.NAME_1 === 'Hồ Chí Minh')
+    } else {
+      // Default to Hanoi
+      features = geoData.features.filter(f => f.properties.NAME_1 === 'Hà Nội')
     }
 
-    // Create GeoJSON layer
-    geoLayer.value = L.geoJSON(filteredGeoData, {
+    // Create GeoJSON layer for districts
+    geoLayer.value = L.geoJSON({
+      ...geoData,
+      features
+    }, {
       style: feature => {
         const name = feature.properties.NAME_2
         const data = locationData.value[name]
-        const aqi = data?.AQI || null
+        const aqi = data?.AQI
         return {
           fillColor: getColor(aqi),
           weight: 1.5,
-          color: '#1e293b', // slate-800
+          color: '#1e293b',
           fillOpacity: 0.8
         }
       },
@@ -317,6 +371,7 @@ onMounted(() => {
         const name = feature.properties.NAME_2
         const data = locationData.value[name]
         const centroid = getCentroid(feature)
+
         const tooltipContent = data
           ? `<div style="font-family: 'Inter', sans-serif;">
              <div style="font-weight: bold; font-size: 16px; text-align: center; margin-bottom: 5px; color: #22d3ee;">${name}</div>
@@ -332,7 +387,6 @@ onMounted(() => {
              <div style="padding: 5px;">Không có dữ liệu</div>
            </div>`
 
-        // Bind tooltip to the centroid of the district
         const tooltip = L.tooltip({
           permanent: false,
           direction: 'top',
@@ -345,7 +399,7 @@ onMounted(() => {
 
         layer.bindTooltip(tooltip)
 
-        // Show/hide tooltip on hover and update city info
+        // Add hover effects for districts
         layer.on({
           mouseover: () => {
             layer.setStyle({
@@ -367,7 +421,7 @@ onMounted(() => {
             layer.closeTooltip()
 
             // Reset to default info when not hovering
-            currentCity.value = mapStore.city || 'Hà Nội'
+            currentCity.value = city || 'Hà Nội'
             if (mapStore.mostPollutedLocation) {
               currentAQI.value = mapStore.mostPollutedLocation.AQI
             } else {
@@ -391,16 +445,69 @@ onMounted(() => {
       pane: 'shadowPane'
     }).addTo(map.value)
 
-    // Fit map to Hà Nội districts' bounds
+    // Fit to city bounds
     const bounds = geoLayer.value.getBounds()
-    map.value.fitBounds(bounds, {
-      padding: [50, 50],
-      maxZoom: 11
-    })
+    map.value.fitBounds(bounds, fitOptions)
+  }
 
-    // Force map to update its size
-    map.value.invalidateSize()
-  }, 100)
+  // Force map to update its size
+  map.value.invalidateSize()
+}
+
+// Watch for changes in the map store
+watch(() => mapStore.city, (newCity) => {
+  if (newCity) {
+    console.log('Updating map for city:', newCity)
+    updateMap()
+  }
+})
+
+// Watch locationData để cập nhật màu khi dữ liệu đổi
+watch(locationData, () => {
+  updateMap() // Simply call updateMap since it already handles setting styles properly
+}, { deep: true })
+
+onMounted(() => {
+  // Need to wait a bit for the DOM to be fully rendered
+  setTimeout(() => {
+    // Log that we're initializing the map
+    console.log('Initializing map component')
+
+    try {
+      // Initialize the map
+      map.value = L.map('map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([21.0285, 105.8542], 11)
+
+      // Set minimum zoom level (will be adjusted based on view)
+      map.value.setMinZoom(10)
+
+      // Use a dark theme tile layer
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap & CartoDB',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map.value);
+
+      // Create a shadow pane for highlight effect
+      map.value.createPane('shadowPane')
+      map.value.getPane('shadowPane').style.zIndex = 450
+
+      // Log that we're now running the initial map update
+      console.log('Running initial map update')
+
+      // Initial map update based on current city
+      updateMap()
+
+      // Force map to update its size
+      map.value.invalidateSize()
+
+      console.log('Map initialization complete')
+    } catch (e) {
+      console.error('Error during map initialization:', e)
+    }
+  }, 200) // Increased timeout for more reliable DOM readiness
 })
 </script>
 
