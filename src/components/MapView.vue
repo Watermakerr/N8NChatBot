@@ -55,14 +55,20 @@
     <!-- Thêm khu vực hiển thị chỉ số không khí ở phía dưới bản đồ -->
     <div class="flex bg-white text-slate-800 p-4 shadow-inner">
       <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
-        <div class="text-3xl font-bold text-blue-600">{{ currentCity }}</div>
+        <div class="text-3xl font-bold text-blue-600">
+          {{ hoveredLocation ? hoveredLocation.name : '--' }}
+        </div>
       </div>
       <div class="flex-1 flex flex-col items-center justify-center border-r border-slate-200">
-        <div class="text-4xl font-bold" :class="getAQIColor(currentAQI)">{{ currentAQI }}</div>
+        <div class="text-4xl font-bold" :class="getAQIColor(hoveredLocation?.AQI)">
+          {{ hoveredLocation ? hoveredLocation.AQI : '--' }}
+        </div>
         <div class="text-sm text-slate-500">AQI</div>
       </div>
       <div class="flex-1 flex flex-col items-center justify-center">
-        <div class="text-xl font-medium" :class="getAQIColor(currentAQI)">{{ getAQIDescription(currentAQI) }}</div>
+        <div class="text-xl font-medium" :class="getAQIColor(hoveredLocation?.AQI)">
+          {{ hoveredLocation ? hoveredLocation.desc : '--' }}
+        </div>
         <div class="text-sm text-slate-500">Tình trạng</div>
       </div>
     </div>
@@ -80,10 +86,10 @@ import vnBoundary from '@/assets/gadm41_VNM_1.json'
 
 // Initialize the map store
 const mapStore = useMapStore()
-
+const hoveredLocation = ref(null) // { name: '', AQI: 0 }
 const legendExpanded = ref(false)
-const currentCity = ref('Hà Nội')
-const currentAQI = ref(132)
+const currentCity = ref('-')
+const currentAQI = ref('-')
 const map = ref(null)
 const geoLayer = ref(null)
 const vnLayer = ref(null) // Add a separate layer for Vietnam boundaries
@@ -272,6 +278,13 @@ function updateMap() {
                   if (data) {
                     currentCity.value = name
                     currentAQI.value = data.AQI
+                    hoveredLocation.value = {
+                      name,
+                      AQI: data.AQI,
+                      desc: getAQIDescription(data.AQI)
+                    }
+                  } else {
+                    hoveredLocation.value = null
                   }
                 },
                 mouseout: () => {
@@ -285,6 +298,7 @@ function updateMap() {
                   } else {
                     currentAQI.value = 132 // Default value
                   }
+                  hoveredLocation.value = null
                 },
                 click: () => {
                   map.value.fitBounds(layer.getBounds(), {
@@ -414,6 +428,13 @@ function updateMap() {
             if (data) {
               currentCity.value = name
               currentAQI.value = data.AQI
+              hoveredLocation.value = {
+                name,
+                AQI: data.AQI,
+                desc: getAQIDescription(data.AQI)
+              }
+            } else {
+              hoveredLocation.value = null
             }
           },
           mouseout: () => {
@@ -427,6 +448,7 @@ function updateMap() {
             } else {
               currentAQI.value = 132 // Default value
             }
+            hoveredLocation.value = null
           },
           click: () => {
             map.value.fitBounds(layer.getBounds(), {

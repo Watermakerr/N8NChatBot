@@ -29,7 +29,7 @@
     <!-- Input -->
     <div class="flex items-end p-4 bg-gray-100 space-x-2 border-t border-gray-300">
       <textarea v-model="newMessage" placeholder="Nhập tin nhắn..." rows="1" @keydown.enter.prevent="sendMessage"
-        class="flex-1 border border-gray-300 bg-white text-gray-800 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none overflow-hidden transition-all duration-200">
+        class="flex-1 border border-gray-300 bg-white text-gray-800 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-y overflow-auto transition-all duration-200">
       </textarea>
 
       <button @click="recordVoice"
@@ -41,16 +41,18 @@
         Gửi
       </button>
     </div>
+
+    <RecordModal ref="recordModalRef" @transcription="handleTranscription" />
   </div>
 </template>
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import { useMapStore } from '@/stores/mapStore'
+import RecordModal from './RecordModal.vue'
 
-// Initialize the map store
+const recordModalRef = ref(null)
 const mapStore = useMapStore()
-
 const messages = ref([
   { sender: 'bot', text: 'Xin chào! Tôi là Trợ lý Ô nhiễm.', timestamp: new Date() },
   { sender: 'user', text: 'Chào bạn, tôi cần kiểm tra chất lượng không khí.', timestamp: new Date() },
@@ -61,22 +63,14 @@ const messages = ref([
 
 const newMessage = ref('')
 const chatContainer = ref(null)
-const isRecording = ref(false)
 
-// Send message and update map data
 async function sendMessage() {
   if (newMessage.value.trim() !== '') {
-    // Add user message to chat
     messages.value.push({ sender: 'user', text: newMessage.value, timestamp: new Date() })
-
-    // Store message to send to API
     const userInput = newMessage.value
-
-    // Clear input field
     newMessage.value = ''
 
     try {
-      // Call API with user message
       const response = await fetch('http://127.0.0.1:8000/send-to-webhook', {
         method: 'POST',
         headers: {
@@ -95,24 +89,19 @@ async function sendMessage() {
       const data = await response.json()
       console.log('API response:', data)
 
-      // Add bot response to chat
       messages.value.push({
         sender: 'bot',
         text: data.reply,
         timestamp: new Date()
       })
 
-      // Update map store if map data is provided
       if (data.map && data.map !== 'none') {
-        // Cập nhật mapStore hoặc updateMapData như bình thường
         mapStore.city = data.map
         mapStore.locations = data.location || []
         mapStore.AQI = data.AQI || []
         mapStore.CO = data.CO || []
         mapStore.SO2 = data.SO2 || []
         mapStore.PM25 = data.PM25 || []
-
-        // Log to confirm data was updated in store
         console.log('Map data updated in store:', mapStore.city)
       }
     } catch (error) {
@@ -127,15 +116,12 @@ async function sendMessage() {
 }
 
 function recordVoice() {
-  isRecording.value = !isRecording.value
-
-  if (isRecording.value) {
-    alert('Đang ghi âm...')
-  } else {
-    alert('Đã dừng ghi âm')
-  }
+  recordModalRef.value?.openModal()
 }
 
+function handleTranscription(text) {
+  newMessage.value = text
+}
 
 function formatTimestamp(timestamp) {
   return new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
@@ -150,12 +136,10 @@ function scrollToBottom() {
   }
 }
 
-// Watch for changes in messages and scroll to bottom
 watch(messages, () => {
   setTimeout(scrollToBottom, 0)
 }, { deep: true })
 
-// Scroll to bottom on initial load
 onMounted(() => {
   scrollToBottom()
 })

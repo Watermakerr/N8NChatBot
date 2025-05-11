@@ -40,3 +40,4 @@ body {
   /* blue-500 */
 }
 </style>z
+const userInput = newMessage.value
