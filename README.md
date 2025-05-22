@@ -33,3 +33,4 @@ bun run build
 ```sh
 bun lint
 ```
+![Example Map](image/map.png)
