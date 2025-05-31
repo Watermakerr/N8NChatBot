@@ -12,7 +12,7 @@
       <div v-for="(msg, idx) in messages" :key="idx" class="flex"
         :class="msg.sender === 'user' ? 'justify-end' : 'justify-start'">
         <div :class="[
-          'max-w-xs md:max-w-md px-4 py-2 rounded-2xl shadow-md',
+          'max-w-xs md:max-w-md px-4 py-2 rounded-2xl shadow-md relative group',
           msg.sender === 'user'
             ? 'bg-gradient-to-r from-blue-400 to-cyan-400 text-white'
             : 'bg-gray-200 text-gray-800'
@@ -21,6 +21,15 @@
           <div v-if="msg.timestamp" class="text-xs mt-1 opacity-70"
             :class="msg.sender === 'user' ? 'text-white' : 'text-gray-600'">
             {{ formatTimestamp(msg.timestamp) }}
+          </div>
+
+          <!-- Audio button for bot messages with audio -->
+          <div v-if="msg.sender === 'bot' && msg.audioUrl"
+            class="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button @click="playAudio(msg.audioUrl)"
+              class="w-8 h-8 bg-cyan-500 text-white rounded-full shadow-lg hover:bg-cyan-600 transition-colors duration-200 flex items-center justify-center text-sm">
+              🔊
+            </button>
           </div>
         </div>
       </div>
@@ -64,6 +73,39 @@ const messages = ref([
 const newMessage = ref('')
 const chatContainer = ref(null)
 
+// Function to convert base64 to audio URL
+function base64ToAudioUrl(base64String) {
+  try {
+    // Remove data URL prefix if present
+    const base64Data = base64String.replace(/^data:audio\/[^;]+;base64,/, '')
+
+    // Convert base64 to binary
+    const binaryString = atob(base64Data)
+    const bytes = new Uint8Array(binaryString.length)
+
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+
+    // Create blob and URL
+    const blob = new Blob([bytes], { type: 'audio/wav' })
+    return URL.createObjectURL(blob)
+  } catch (error) {
+    console.error('Error converting base64 to audio:', error)
+    return null
+  }
+}
+
+// Function to play audio
+function playAudio(audioUrl) {
+  if (audioUrl) {
+    const audio = new Audio(audioUrl)
+    audio.play().catch(error => {
+      console.error('Error playing audio:', error)
+    })
+  }
+}
+
 async function sendMessage() {
   if (newMessage.value.trim() !== '') {
     messages.value.push({ sender: 'user', text: newMessage.value, timestamp: new Date() })
@@ -89,12 +131,24 @@ async function sendMessage() {
       const data = await response.json()
       console.log('API response:', data)
 
-      messages.value.push({
+      // Create message object
+      const botMessage = {
         sender: 'bot',
         text: data.reply,
         timestamp: new Date()
-      })
+      }
 
+      // Add audio URL if audioBase64 exists and map is null
+      if (data.map === null && data.audioBase64) {
+        const audioUrl = base64ToAudioUrl(data.audioBase64)
+        if (audioUrl) {
+          botMessage.audioUrl = audioUrl
+        }
+      }
+
+      messages.value.push(botMessage)
+
+      // Update map data if available
       if (data.map && data.map !== 'none') {
         mapStore.city = data.map
         mapStore.locations = data.location || []
